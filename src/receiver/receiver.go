@@ -1,7 +1,7 @@
 package main
 
 import (
-	"drone-target-detection/src/ml_models"
+	"drone-target-detection/src/mlmodels"
 	"drone-target-detection/src/storage"
 
 	"flag"
@@ -57,7 +57,7 @@ func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
 
 	// declare sources to write to
 	videoStoreDest := &storage.StorageDestination{} // TODO replacce placeholder
-	inferenceModel := &ml_models.MachineLearningModel{}
+	inferenceModel := &mlmodels.MachineLearningModel{}
 	teeWriter := io.MultiWriter(videoStoreDest, inferenceModel)
 	// stream frames to destination
 

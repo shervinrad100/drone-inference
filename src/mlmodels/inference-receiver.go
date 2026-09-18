@@ -1,4 +1,4 @@
-package ml_models
+package mlmodels
 
 import "fmt"
 

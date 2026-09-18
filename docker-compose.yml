@@ -1,15 +1,27 @@
 services:
   receiver:
     build: 
-      context: .
-      dockerfile: ./src/receiver/Dockerfile
+      context: ./src
+      dockerfile: ./receiver/Dockerfile
     ports:
       - "8080:8080"
   
-  video_feed:
+  video-feed:
     build: 
-      context: .
-      dockerfile: ./src/video_feed/Dockerfile
+      context: ./src
+      dockerfile: ./video-feed/Dockerfile
     depends_on:
       - receiver
     command: ["-ip", "receiver", "-port", "8080"]
+
+  log-balancer:
+    build:
+      context: ./logger
+      dockerfile: ./log-load-balancer/Dockerfile
+    # depends_on:
+    #   - logger
+
+  # logger:
+  #   build:
+  #     context: ./logger
+  #     dockerfile: ./Dockerfile

@@ -7,7 +7,7 @@ COPY go.mod ./
 RUN go mod download
 # build binary
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./src/receiver
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./receiver
 
 # run the binary
 FROM alpine:latest
