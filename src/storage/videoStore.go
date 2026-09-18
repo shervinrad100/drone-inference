@@ -1,0 +1,12 @@
+package storage
+
+import "fmt"
+
+type StorageDestination struct{}
+
+func (storage *StorageDestination) Write(p []byte) (n int, err error) {
+	// TODO think about API design 1. primitive 2. Low level 3. High level with nested calls from prim -> HL
+	// TODO handle the building of video and saving it to file
+	fmt.Printf("%d bytes written to storage\n", len(p))
+	return len(p), nil
+}

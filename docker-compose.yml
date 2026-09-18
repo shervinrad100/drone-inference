@@ -1,0 +1,15 @@
+services:
+  receiver:
+    build: 
+      context: .
+      dockerfile: ./src/receiver/Dockerfile
+    ports:
+      - "8080:8080"
+  
+  video_feed:
+    build: 
+      context: .
+      dockerfile: ./src/video_feed/Dockerfile
+    depends_on:
+      - receiver
+    command: ["-ip", "receiver", "-port", "8080"]
