@@ -20,8 +20,8 @@ const (
 func main() {
 	// Parse port info
 	portArg := flag.String("port", "8080", "Port number to bind TCP socket")
-	address := fmt.Sprintf(":%s", *portArg)
 	flag.Parse()
+	address := fmt.Sprintf(":%s", *portArg)
 
 	// Bind to TCP port
 	listener, err := net.Listen("tcp", address)

@@ -25,11 +25,11 @@ func main() {
 
 	// connect to TCP soc
 	conn, err := net.Dial("tcp", address)
-	defer conn.Close()
 	if err != nil {
 		fmt.Printf("ERROR: Failed to connect to soc: %w\n", err)
 		return
 	}
+	defer conn.Close()
 
 	// send random bytes mocking a video feed
 	if err := sendVideoBytes(conn); err != nil {
