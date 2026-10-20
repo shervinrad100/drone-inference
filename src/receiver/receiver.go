@@ -3,6 +3,8 @@ package main
 import (
 	"drone-target-detection/src/mlmodels"
 	"drone-target-detection/src/storage"
+	"log/slog"
+	"os"
 
 	"flag"
 	"fmt"
@@ -18,6 +20,9 @@ const (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	// Parse port info
 	portArg := flag.String("port", "8080", "Port number to bind TCP socket")
 	flag.Parse()
@@ -25,12 +30,12 @@ func main() {
 
 	// Bind to TCP port
 	listener, err := net.Listen("tcp", address)
-	fmt.Printf("LOG: listening on %s...\n", address)
-	defer listener.Close()
 	if err != nil {
-		fmt.Printf("ERROR: failed to listen on %v: %w/n", address, err)
+		logger.Error("Failed to start server", "server.address", address, "err", err)
 		return
 	}
+	defer listener.Close()
+	logger.Info("Server up. Listening...", "server.address", address, "network.transport", "tcp")
 
 	// TODO graceful shutdown of the server
 
@@ -38,11 +43,11 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("ERROR: failed to accept connection on %v: %w", address, err)
+			logger.Error("Failed to accept connection.", "server.address", address, "err", err)
 		}
 
 		semaphore <- struct{}{}
-		fmt.Printf("[+] New connection from %s (%d active)\n", conn.RemoteAddr(), len(semaphore))
+		logger.Info("[+] New connection.", "client.address", conn.RemoteAddr().String(), "network.connections.active", len(semaphore))
 		go handleConnection(conn, semaphore)
 
 	}
@@ -50,6 +55,7 @@ func main() {
 }
 
 func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
+	log := slog.With("client.address", streamConn.RemoteAddr().String())
 	defer func() {
 		<-semaphore
 		streamConn.Close()
@@ -63,8 +69,8 @@ func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
 
 	_, err := io.Copy(teeWriter, streamConn)
 	if err != nil && err != io.EOF {
-		// TODO logging
-		fmt.Printf("ERROR: failed to write from video stream: %w", err)
+		log.Error("Failed to copy from video stream", "err", err)
 	}
 
+	// TODO frames.dropped, frames.delayed, delay_ms.max avgFps
 }
