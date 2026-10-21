@@ -17,7 +17,7 @@ const (
 	FAILURE_RATE_PCT        = 20
 	VIDEO_FRAMES_PER_SECOND = 60
 	FRAME_BUFFER_SIZE       = 1024
-	MAX_DELAY_MILLISECOND   = 20
+	MAX_DELAY_MILLISECOND   = 3600
 	HEADER_SIZE             = 4 + 8 + 8 // frame id + timestamp + payload length
 )
 

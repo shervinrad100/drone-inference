@@ -5,6 +5,8 @@ services:
       dockerfile: ./receiver/Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      - LOG_LEVEL=DEBUG
   
   video-feed:
     build: 
@@ -12,16 +14,7 @@ services:
       dockerfile: ./video-feed/Dockerfile
     depends_on:
       - receiver
+    environment:
+      - LOG_LEVEL=DEBUG
     command: ["-ip", "receiver", "-port", "8080"]
 
-  log-balancer:
-    build:
-      context: ./logger
-      dockerfile: ./log-load-balancer/Dockerfile
-    # depends_on:
-    #   - logger
-
-  # logger:
-  #   build:
-  #     context: ./logger
-  #     dockerfile: ./Dockerfile
