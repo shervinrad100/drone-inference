@@ -114,3 +114,10 @@ now I can dig deep into one of these and discuss how we would be logging these.
     - POST v1/logs/query
 - change the alerting settings
     - POST v1/alerts
+
+
+
+---
+coding notes:
+- I'm running the ML model on the same machine as the receiver (tightly coupled import).
+- 
