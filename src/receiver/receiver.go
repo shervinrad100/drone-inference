@@ -6,17 +6,22 @@ import (
 	"log/slog"
 	"os"
 
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
 
 // TODO add logging
 
 const (
-	MAX_CONNECTIONS   = 1
-	WRITE_BUFFER_SIZE = 1024
+	MAX_CONNECTIONS = 1
+	// frame layout must match encodeFrame in video-feed.go:
+	// id (4 bytes) | timestamp ns (8 bytes) | payload length (8 bytes) | payload
+	HEADER_SIZE       = 4 + 8 + 8
+	MAX_PAYLOAD_BYTES = 1 << 20 // reject corrupt headers before allocating
 )
 
 func main() {
@@ -44,6 +49,7 @@ func main() {
 		conn, err := listener.Accept()
 		if err != nil {
 			logger.Error("Failed to accept connection.", "server.address", address, "err", err)
+			continue
 		}
 
 		semaphore <- struct{}{}
@@ -62,15 +68,62 @@ func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
 	}()
 
 	// declare sources to write to
-	videoStoreDest := &storage.StorageDestination{} // TODO replacce placeholder
+	videoStoreDest := &storage.StorageDestination{} // TODO
 	inferenceModel := &mlmodels.MachineLearningModel{}
 	teeWriter := io.MultiWriter(videoStoreDest, inferenceModel)
-	// stream frames to destination
 
-	_, err := io.Copy(teeWriter, streamConn)
-	if err != nil && err != io.EOF {
-		log.Error("Failed to copy from video stream", "err", err)
+	// read one whole frame at a time and forward its payload,
+	// so each destination gets exactly one frame per Write call
+	for {
+		frame, err := readFrame(streamConn)
+		if err == io.EOF {
+			log.Info("Stream closed by sender.")
+			return
+		}
+		if err != nil {
+			log.Error("Failed to read frame", "err", err)
+			return
+		}
+		if _, err := teeWriter.Write(frame.Payload); err != nil {
+			log.Error("Failed to forward frame", "frame.id", frame.ID, "err", err)
+			return
+		}
 	}
 
 	// TODO frames.dropped, frames.delayed, delay_ms.max avgFps
+}
+
+type Frame struct {
+	ID        uint32
+	Timestamp time.Time
+	Payload   []byte
+}
+
+// readFrame reads exactly one frame from r.
+// Returns io.EOF only if the stream ended cleanly between frames;
+// a stream that stops mid-frame returns io.ErrUnexpectedEOF.
+func readFrame(r io.Reader) (Frame, error) {
+	hdr := make([]byte, HEADER_SIZE)
+	if _, err := io.ReadFull(r, hdr); err != nil {
+		return Frame{}, err
+	}
+
+	length := binary.BigEndian.Uint64(hdr[12:20])
+	if length > MAX_PAYLOAD_BYTES {
+		return Frame{}, fmt.Errorf("payload length %d exceeds max %d", length, MAX_PAYLOAD_BYTES)
+	}
+
+	payload := make([]byte, length)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF // got a header but no payload
+		}
+		return Frame{}, err
+	}
+
+	return Frame{
+		ID:        binary.BigEndian.Uint32(hdr[0:4]),
+		Timestamp: time.Unix(0, int64(binary.BigEndian.Uint64(hdr[4:12]))),
+		Payload:   payload,
+	}, nil
 }
