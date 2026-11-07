@@ -1,6 +1,10 @@
-package storage
+package main
 
-import "fmt"
+import (
+	"drone-target-detection/src/internal/platform"
+	"fmt"
+	"log/slog"
+)
 
 type StorageDestination struct{}
 
@@ -9,4 +13,11 @@ func (storage *StorageDestination) Write(p []byte) (n int, err error) {
 	// TODO handle the building of video and saving it to file
 	fmt.Printf("%d bytes written to storage\n", len(p))
 	return len(p), nil
+}
+
+func main() {
+	// TODO start server and accept TCP connections
+	// read stream
+	logger := platform.NewLogger()
+	slog.SetDefault(logger)
 }

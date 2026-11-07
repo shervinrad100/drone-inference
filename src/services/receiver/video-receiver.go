@@ -3,8 +3,6 @@ package main
 import (
 	"drone-target-detection/src/internal/platform"
 	"drone-target-detection/src/internal/video"
-	"drone-target-detection/src/services/mlmodels"
-	"drone-target-detection/src/services/storage"
 	"flag"
 	"log/slog"
 
@@ -82,9 +80,9 @@ func handleVideoFeed(streamConn net.Conn, semaphore chan struct{}) {
 	}()
 
 	// declare sources to write to
-	videoStoreDest := &storage.StorageDestination{} // TODO
-	inferenceModel := &mlmodels.MachineLearningModel{}
-	teeWriter := io.MultiWriter(videoStoreDest, inferenceModel)
+	// TODO send to inference model and video store
+	// TODO get resource destination from service registry
+	// teeWriter := io.MultiWriter(videoStoreDest, inferenceModelDest)
 
 	// stream health measured from what arrives (see streamStats below)
 	stats := streamStats{windowStart: time.Now()}
@@ -108,10 +106,11 @@ func handleVideoFeed(streamConn net.Conn, semaphore chan struct{}) {
 			stats.report(logger)
 		}
 
-		if _, err := teeWriter.Write(frame.Payload); err != nil {
-			logger.Error("Failed to forward frame", "frame.id", frame.ID, "err", err)
-			return
-		}
+		// TODO forward frame downstream
+		// if _, err := teeWriter.Write(frame.Payload); err != nil {
+		// 	logger.Error("Failed to forward frame", "frame.id", frame.ID, "err", err)
+		// 	return
+		// }
 	}
 }
 
