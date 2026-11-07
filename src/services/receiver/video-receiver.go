@@ -1,17 +1,16 @@
 package main
 
 import (
+	"drone-target-detection/src/internal/platform"
+	"drone-target-detection/src/internal/video"
 	"drone-target-detection/src/services/mlmodels"
 	"drone-target-detection/src/services/storage"
-	"log/slog"
-	"os"
-
-	"encoding/binary"
 	"flag"
+	"log/slog"
+
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"time"
 )
 
@@ -19,56 +18,42 @@ import (
 
 const (
 	MAX_CONNECTIONS = 1
-	// frame layout must match encodeFrame in video-feed.go:
-	// id (4 bytes) | timestamp ns (8 bytes) | payload length (8 bytes) | payload
-	HEADER_SIZE       = 4 + 8 + 8
-	MAX_PAYLOAD_BYTES = 1 << 20 // reject corrupt headers before allocating
 
 	STATS_INTERVAL          = time.Second
 	DELAYED_FRAME_THRESHOLD = time.Second / 60 // older than one frame interval at 60fps
 )
 
 func main() {
-	var logLevel slog.Level
-	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
-	case "DEBUG":
-		logLevel = slog.LevelDebug
-	case "INFO":
-		logLevel = slog.LevelInfo
-	case "WARN":
-		logLevel = slog.LevelWarn
-	case "ERROR":
-		logLevel = slog.LevelError
-	default:
-		logLevel = slog.LevelInfo
-	}
-	opts := &slog.HandlerOptions{
-		Level: logLevel,
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	logger := platform.NewLogger()
 	slog.SetDefault(logger)
 
-	// Parse port info
-	portArg := flag.String("port", "8080", "Port number to bind TCP socket")
+	// Start new TCP server
+	portArg := flag.String("port", "", "Port number to listen on")
 	flag.Parse()
 	address := fmt.Sprintf(":%s", *portArg)
 
-	// Bind to TCP port
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		logger.Error("Failed to start server", "server.address", address, "err", err)
+		logger.Error("Failed to start server", "err", err)
 		return
 	}
-	defer listener.Close()
-	logger.Info("Server up. Listening...", "server.address", address, "network.transport", "tcp")
+	logger = logger.With("local.address", listener.Addr().String())
+	slog.SetDefault(logger)
+	logger.Info("Server up. Listening...", "network.transport", "tcp")
+
+	defer func() {
+		logger.Info("closing listener")
+		listener.Close()
+	}()
 
 	// TODO graceful shutdown of the server
 
+	// Listen for connections
 	semaphore := make(chan struct{}, MAX_CONNECTIONS)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			logger.Error("Failed to accept connection.", "server.address", address, "err", err)
+			logger.Error("Failed to accept connection.", "err", err)
 			continue
 		}
 
@@ -76,21 +61,23 @@ func main() {
 		select {
 		case semaphore <- struct{}{}:
 		default:
-			logger.Warn("Connection refused: at capacity.", "client.address", conn.RemoteAddr().String(), "network.connections.max", MAX_CONNECTIONS)
+			logger.Warn("Connection refused: at capacity.", "remote.address", conn.RemoteAddr().String(), "network.connections.max", MAX_CONNECTIONS)
 			conn.Close()
 			continue
 		}
-		logger.Info("[+] New connection.", "client.address", conn.RemoteAddr().String(), "network.connections.active", len(semaphore))
-		go handleConnection(conn, semaphore)
+		logger.Info("[+] New connection.", "remote.address", conn.RemoteAddr().String(), "network.connections.active", len(semaphore))
+
+		go handleVideoFeed(conn, semaphore)
 
 	}
 
 }
 
-func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
-	log := slog.With("client.address", streamConn.RemoteAddr().String())
+func handleVideoFeed(streamConn net.Conn, semaphore chan struct{}) {
+	logger := slog.With("remote.address", streamConn.RemoteAddr().String())
 	defer func() {
 		<-semaphore
+		logger.Info("closing connection")
 		streamConn.Close()
 	}()
 
@@ -101,66 +88,31 @@ func handleConnection(streamConn net.Conn, semaphore chan struct{}) {
 
 	// stream health measured from what arrives (see streamStats below)
 	stats := streamStats{windowStart: time.Now()}
-	defer stats.report(log) // log the final partial window on exit
+	defer stats.report(logger) // log the final partial window on exit
 
 	// read one whole frame at a time and forward its payload,
 	// so each destination gets exactly one frame per Write call
 	for {
-		frame, err := readFrame(streamConn)
+		frame, err := video.ReadFrame(streamConn)
 		if err == io.EOF {
-			log.Info("Stream closed by sender.")
+			logger.Info("Stream closed by sender")
 			return
 		}
 		if err != nil {
-			log.Error("Failed to read frame", "err", err)
+			logger.Error("Failed to read frame", "err", err)
 			return
 		}
 
 		stats.observe(frame)
 		if time.Since(stats.windowStart) >= STATS_INTERVAL {
-			stats.report(log)
+			stats.report(logger)
 		}
 
 		if _, err := teeWriter.Write(frame.Payload); err != nil {
-			log.Error("Failed to forward frame", "frame.id", frame.ID, "err", err)
+			logger.Error("Failed to forward frame", "frame.id", frame.ID, "err", err)
 			return
 		}
 	}
-}
-
-type Frame struct {
-	ID        uint32
-	Timestamp time.Time
-	Payload   []byte
-}
-
-// readFrame reads exactly one frame from r.
-// Returns io.EOF only if the stream ended cleanly between frames;
-// a stream that stops mid-frame returns io.ErrUnexpectedEOF.
-func readFrame(r io.Reader) (Frame, error) {
-	hdr := make([]byte, HEADER_SIZE)
-	if _, err := io.ReadFull(r, hdr); err != nil {
-		return Frame{}, err
-	}
-
-	length := binary.BigEndian.Uint64(hdr[12:20])
-	if length > MAX_PAYLOAD_BYTES {
-		return Frame{}, fmt.Errorf("payload length %d exceeds max %d", length, MAX_PAYLOAD_BYTES)
-	}
-
-	payload := make([]byte, length)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF // got a header but no payload
-		}
-		return Frame{}, err
-	}
-
-	return Frame{
-		ID:        binary.BigEndian.Uint32(hdr[0:4]),
-		Timestamp: time.Unix(0, int64(binary.BigEndian.Uint64(hdr[4:12]))),
-		Payload:   payload,
-	}, nil
 }
 
 // streamStats measures stream health from what arrives: gaps in frame IDs
@@ -175,7 +127,7 @@ type streamStats struct {
 	delayMax    time.Duration
 }
 
-func (s *streamStats) observe(f Frame) {
+func (s *streamStats) observe(f video.Frame) {
 	s.received++
 	if f.ID > s.lastID {
 		s.dropped += uint64(f.ID - s.lastID - 1)
