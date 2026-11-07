@@ -1,13 +1,12 @@
 
 
-# set up go
+# build binary
 FROM golang:1.27-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
 RUN go mod download
-# build binary
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./receiver
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./services/video-feed
 
 # run the binary
 FROM alpine:latest

@@ -2,7 +2,7 @@ services:
   receiver:
     build: 
       context: ./src
-      dockerfile: ./receiver/Dockerfile
+      dockerfile: ./services/receiver/Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -11,7 +11,7 @@ services:
   video-feed:
     build: 
       context: ./src
-      dockerfile: ./video-feed/Dockerfile
+      dockerfile: ./services/video-feed/Dockerfile
     depends_on:
       - receiver
     environment:

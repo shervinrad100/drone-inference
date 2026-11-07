@@ -1,8 +1,8 @@
 package main
 
 import (
-	"drone-target-detection/src/mlmodels"
-	"drone-target-detection/src/storage"
+	"drone-target-detection/src/services/mlmodels"
+	"drone-target-detection/src/services/storage"
 	"log/slog"
 	"os"
 
