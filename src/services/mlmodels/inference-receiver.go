@@ -33,7 +33,7 @@ func main() {
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		logger.Error("Failed to start server", "server.address", address, "err", err)
+		logger.Error("Failed to start server", "local.address", address, "err", err)
 		return
 	}
 	logger = logger.With("local.address", listener.Addr().String())
@@ -52,6 +52,11 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			// a closed listener fails every Accept, so retrying would spin forever
+			if errors.Is(err, net.ErrClosed) {
+				logger.Info("Listener closed, no longer accepting connections")
+				return
+			}
 			logger.Error("Failed to accept connection.", "err", err)
 			continue
 		}
@@ -66,14 +71,14 @@ func main() {
 		}
 		logger.Info("[+] New connection.", "remote.address", conn.RemoteAddr().String(), "network.connections.active", len(semaphore))
 
-		inferenceModel := MachineLearningModel{}
-		go handleConnection(inferenceModel, conn, semaphore)
+		inferenceModel := &MachineLearningModel{}
+		go handleVideoFeed(inferenceModel, conn, semaphore)
 
 	}
 
 }
 
-func handleConnection(inferenceModel MachineLearningModel, conn net.Conn, semaphore chan struct{}) {
+func handleVideoFeed(inferenceModel *MachineLearningModel, conn net.Conn, semaphore chan struct{}) {
 	logger := slog.With("remote.address", conn.RemoteAddr().String())
 	defer func() {
 		<-semaphore
@@ -83,11 +88,13 @@ func handleConnection(inferenceModel MachineLearningModel, conn net.Conn, semaph
 
 	for {
 		frame, err := video.ReadFrame(conn)
-		if err != nil && !errors.Is(err, io.EOF) {
-			logger.Error("failed to read frame from connection", "err", err)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				logger.Error("failed to read frame from connection", "err", err)
+			} else if errors.Is(err, io.EOF) {
+				logger.Info("Stream closed by sender")
+			}
 			return
-		} else if errors.Is(err, io.EOF) {
-			logger.Info("Stream closed by sender", "err", err)
 		}
 		inferenceModel.Write(frame.Payload)
 	}

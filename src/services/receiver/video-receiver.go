@@ -6,6 +6,7 @@ import (
 	"flag"
 	"log/slog"
 
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -51,6 +52,10 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				logger.Info("Listener closed, no longer accepting connections")
+				return
+			}
 			logger.Error("Failed to accept connection.", "err", err)
 			continue
 		}

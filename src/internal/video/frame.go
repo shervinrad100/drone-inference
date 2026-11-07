@@ -30,7 +30,7 @@ func EncodeFrame(f Frame) []byte {
 	return append(buf, f.Payload...)
 }
 
-// readFrame reads exactly one frame from r.
+// ReadFrame reads exactly one frame from r.
 // Returns io.EOF only if the stream ended cleanly between frames;
 // a stream that stops mid-frame returns io.ErrUnexpectedEOF.
 func ReadFrame(r io.Reader) (Frame, error) {
