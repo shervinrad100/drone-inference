@@ -87,6 +87,7 @@ func handleVideoFeed(streamConn net.Conn, semaphore chan struct{}) {
 	// declare sources to write to
 	// TODO send to inference model and video store
 	// TODO get resource destination from service registry
+	// TODO if errors, get from registry to check, retry with another instance
 	// teeWriter := io.MultiWriter(videoStoreDest, inferenceModelDest)
 
 	// stream health measured from what arrives (see streamStats below)

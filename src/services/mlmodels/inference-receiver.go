@@ -93,8 +93,8 @@ func handleVideoFeed(inferenceModel *MachineLearningModel, conn net.Conn, semaph
 				logger.Error("failed to read frame from connection", "err", err)
 			} else if errors.Is(err, io.EOF) {
 				logger.Info("Stream closed by sender")
+				return
 			}
-			return
 		}
 		inferenceModel.Write(frame.Payload)
 	}

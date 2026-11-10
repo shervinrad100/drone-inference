@@ -120,4 +120,50 @@ now I can dig deep into one of these and discuss how we would be logging these.
 ---
 coding notes:
 - I'm running the ML model on the same machine as the receiver (tightly coupled import).
-- 
+
+# TODO
+- Duplicated platform code. Both main()s contain the same LOG_LEVEL switch and logger setup. It's also unnecessary: slog.Level can already parse level names (lvl.UnmarshalText([]byte(os.Getenv("LOG_LEVEL")))), case-insensitively.
+- A protocol shared by copy and paste. Frame, HEADER_SIZE and the encode/decode logic exist in both services, joined only by the comment "must match encodeFrame in video-feed.go". A comment like that means the code belongs in one shared package.
+- Fault injection inside the business logic. sendVideoBytes does three jobs: sending frames, counting drops, and simulating a bad network. The chaos is part of the test environment, not the program.
+- Measuring and reporting are combined. streamStats.report takes a logger and logs directly. Its real job is to compute numbers. Who receives them should be decided elsewhere: a log line, a Kafka event or a metric.
+- main() and handleConnection do everything. Config, logger, listen, accept loop, reading, stats and forwarding all sit in one place, so you can't test or swap any piece on its own.
+- Minor points: the constants are SCREAMING_CASE (Go style is MixedCaps), the logger is passed as a parameter in one service but taken from slog.With in the other, and shutdown is still missing (no context.Context).
+
+```
+┌─ platform ──────────────────────────────────────────┐
+│  logger from env, config, shutdown signals          │
+│  ┌─ adapters (edges) ────────────────────────────┐  │
+│  │  TCP listener, chaos writer, sinks, Kafka     │  │
+│  │  ┌─ domain ────────────────────────────────┐  │  │
+│  │  │  frame encode/decode, stats math        │  │  │
+│  │  │  (no logging, no network, no env vars)  │  │  │
+│  │  └─────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+
+```
+
+```
+    src/
+        cmd/receiver/main.go       # ~15 lines: load config, build, run
+        cmd/video-feed/main.go
+        internal/platform/         # NewLogger(service), shutdown context
+        internal/frame/            # Frame, Encode, Read — the one protocol
+        internal/stats/            # Observe(frame), Snapshot() — returns data, never logs
+        internal/chaos/            # FaultyWriter wraps any io.Writer
+        internal/receiver/         # Server struct: owns the connection loop
+
+```
+
+- You need three things for good logging: logs for humans, metrics, trace. atm the metrics are just being printed out as logs. How production does it: 
+
+Type	Behaves like	Your stats
+Counter	Only goes up, never resets	frames_received_total, frames_dropped_total
+Gauge	Goes up and down	connections_active
+Histogram	Counts values into buckets (≤16 ms, ≤100 ms, ≤1 s, ≤5 s…)	frame_delay_seconds, which replaces avg/max and gives p50/p99
+Notice that fps isn't stored at all. The query works it out from the counter: rate(frames_received_total[1m]), meaning "how fast did this counter grow over the last minute". Because the stored data is raw totals, any time window and any statistic can be calculated afterwards.
+
+There are two ways to get the numbers out of the app:
+
+Pull (Prometheus, the most common): the app serves an HTTP endpoint, /metrics, showing the current totals. Prometheus visits it every ~15 s ("scrapes" it) and stores the values. Grafana draws the charts. If the stream stalls, the counter stops growing and fps drops to 0. That's visible and you can alert on it, which fixes the "only reports when a frame arrives" problem.
+Push (OpenTelemetry SDK): the app sends metrics to a collector, which forwards them to Prometheus or another backend. It's vendor-neutral, with somewhat more setup.
