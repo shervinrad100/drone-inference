@@ -92,13 +92,13 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 		for id, existing := range service.instances {
 			if existing.info.Address == address {
 				delete(service.instances, id)
-				slog.Warn("instance with same address exists - deleting old instance", "service.id", serviceId, "service.instance.id", id)
+				slog.Warn("instance with same address exists - deleting old instance", "serviceId", serviceId, "instance", existing.info)
 			}
 		}
 		service.instances[instanceId] = instance
 	}
 
-	slog.Info("New service instance registered", "service.id", serviceId, "service.instance", instance.info)
+	slog.Info("instance registered", "serviceId", serviceId, "instance", instance.info)
 	return instance.info, nil
 
 }
@@ -131,7 +131,7 @@ func (r *Registry) list() map[string]svc.Service {
 	return registry
 }
 
-// expires an instance by changing the status using service service ID and instance id
+// expires an instance by changing the status using the service id and instance id
 // this allows services to shutdown gracefully
 func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Instance, error) {
 	r.mu.Lock()
@@ -142,7 +142,7 @@ func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Insta
 		if ok {
 			instance.info.Status = svc.Down
 			service.instances[instanceId] = instance
-			slog.Info("deregistered instance", "service.id", serviceId, "service.instance.id", instanceId)
+			slog.Info("deregistered instance", "serviceId", serviceId, "instance", instance.info)
 			return instance.info, nil
 		}
 		return svc.Instance{}, ErrInstanceNotFound
@@ -179,18 +179,18 @@ func (r *Registry) cleanup() {
 			if time.Since(instance.lastSeen) > svc.TTL {
 				// service is offline
 				delete(service.instances, instanceId)
-				slog.Info("instance removed - TTL exceeded", "service.id", serviceId, "service.instance", instance.info)
+				slog.Info("instance removed - TTL exceeded", "serviceId", serviceId, "instance", instance.info)
 			} else if instance.info.Status == svc.Down {
 				// service has shutdown
 				delete(service.instances, instanceId)
-				slog.Info("instance removed - Status == Down", "service.id", serviceId, "service.instance", instance.info)
+				slog.Info("instance removed - Status == Down", "serviceId", serviceId, "instance", instance.info)
 			}
 		}
 
 		// if all instances of the service are offline, remove service
 		if len(service.instances) == 0 {
 			delete(r.services, serviceId)
-			slog.Debug("service removed - no instances", "service.id", serviceId)
+			slog.Debug("service removed - no instances", "serviceId", serviceId)
 		}
 	}
 }
