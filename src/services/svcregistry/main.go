@@ -22,11 +22,11 @@ import (
 
 func main() {
 	logger := platform.NewLogger()
+	// logger = logger.With("", ) // TODO name of this service and address etc
 	slog.SetDefault(logger)
 
 	// Set up registry
-	registry := Registry{services: make(map[string]serviceRecord)}
-
+	registry := newRegistry()
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 

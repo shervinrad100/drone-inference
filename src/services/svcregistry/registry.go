@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 	"uuid"
 )
@@ -46,7 +47,12 @@ func (sr *serviceRecord) snapshot() svc.Service {
 }
 
 type Registry struct {
-	services map[string]serviceRecord
+	mu       sync.RWMutex
+	services map[string]*serviceRecord
+}
+
+func newRegistry() Registry {
+	return Registry{services: make(map[string]*serviceRecord)}
 }
 
 // Function registers an instance of a service into the registry.
@@ -72,14 +78,16 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 		startTime: time.Now(),
 	}
 
+	r.mu.Lock()
 	if service, ok := r.services[serviceId]; !ok {
-		r.services[serviceId] = serviceRecord{
+		r.services[serviceId] = &serviceRecord{
 			name:      serviceId,
 			instances: map[uuid.UUID]instanceRecord{instanceId: instance},
 		}
 	} else {
 		service.instances[instanceId] = instance
 	}
+	r.mu.Unlock()
 
 	slog.Info("New service instance registered", "service.id", serviceId, "service.instance", instance.info)
 	return instance.info, nil
@@ -90,6 +98,9 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 // if it is available it will return a copy of the struct and a bool flag to indicate found
 // otherwise returns a nil value Service struct and a false
 func (r *Registry) lookup(serviceId string) (svc.Service, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	service, ok := r.services[serviceId]
 	if !ok {
 		return svc.Service{}, false
@@ -101,6 +112,9 @@ func (r *Registry) lookup(serviceId string) (svc.Service, bool) {
 func (r *Registry) list() map[string]svc.Service {
 	registry := make(map[string]svc.Service)
 
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	for serviceId, service := range r.services {
 		registry[serviceId] = service.snapshot()
 	}
@@ -111,11 +125,14 @@ func (r *Registry) list() map[string]svc.Service {
 // expires an instance by changing the status using service service ID and instance id
 // this allows services to shutdown gracefully
 func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Instance, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if service, ok := r.services[serviceId]; ok {
 		instance, ok := service.instances[instanceId]
 		if ok {
 			instance.info.Status = svc.Down
-			r.services[serviceId].instances[instanceId] = instance
+			service.instances[instanceId] = instance
 			return instance.info, nil
 		}
 		return svc.Instance{}, ErrInstanceNotFound
@@ -124,29 +141,31 @@ func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Insta
 }
 
 // updates the last signal from a service instance
-// TODO this is an internal function does it need to return instance info? why not just update in place and return nil error
-func (r *Registry) renewLease(serviceId string, instanceId uuid.UUID) (svc.Instance, error) {
+func (r *Registry) renewLease(serviceId string, instanceId uuid.UUID) error {
 	if service, ok := r.services[serviceId]; ok {
 		if instance, ok := service.instances[instanceId]; ok {
 			instance.lastSeen = time.Now()
-			r.services[serviceId].instances[instanceId] = instance
-			return instance.info, nil
+			service.instances[instanceId] = instance
+			return nil
 		}
-		return svc.Instance{}, ErrInstanceNotFound
+		return ErrInstanceNotFound
 	}
-	return svc.Instance{}, ErrServiceNotFound
+	return ErrServiceNotFound
 }
 
 func (r *Registry) cleanup() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	for serviceId, service := range r.services {
 		for instanceId, instance := range service.instances {
 			if time.Since(instance.lastSeen) > svc.TTL {
 				// service is offline
-				delete(r.services[serviceId].instances, instanceId)
+				delete(service.instances, instanceId)
 				slog.Info("instance removed - TTL exceeded", "service.id", serviceId, "service.instance", instance.info)
 			} else if instance.info.Status == svc.Down {
 				// service has shutdown
-				delete(r.services[serviceId].instances, instanceId)
+				delete(service.instances, instanceId)
 				slog.Info("instance removed - Status == Down", "service.id", serviceId, "service.instance", instance.info)
 			}
 		}
@@ -173,11 +192,6 @@ func (r *Registry) monitor(ctx context.Context) {
 		case <-ticker.C:
 			r.cleanup()
 		}
-
 	}
 
 }
-
-// TODO create mutexes so that async reads and writes are safe
-// Once you implement mutexes its easier to change to pointer semantics
-// so that you can change while holding the lock
