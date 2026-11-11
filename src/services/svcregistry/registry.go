@@ -19,6 +19,7 @@ const (
 var (
 	ErrServiceNotFound  = errors.New("service not found")
 	ErrInstanceNotFound = errors.New("instance not found")
+	ErrInstanceDown     = errors.New("instance is down")
 )
 
 type instanceRecord struct {
@@ -38,7 +39,7 @@ func (sr *serviceRecord) snapshot() svc.Service {
 	service := svc.Service{
 		Name:        sr.name,
 		Description: sr.description,
-		Instances:   make([]svc.Instance, len(sr.instances)),
+		Instances:   make([]svc.Instance, 0, len(sr.instances)),
 	}
 	for _, instance := range sr.instances {
 		service.Instances = append(service.Instances, instance.info)
@@ -58,8 +59,7 @@ func newRegistry() Registry {
 // Function registers an instance of a service into the registry.
 // A service can only exist when there's at least one instance of it
 // if new service, add to registry, if new instance add to service list
-// if address is already registered, assign new ID and re-register.
-// - Old instances will be cleaned up so no worries
+// if address is already registered, assign new ID and re-register and remove the old instance
 func (r *Registry) register(serviceId string, address string) (svc.Instance, error) {
 	// TODO accept description what if name matches but description doesn't?
 
@@ -79,15 +79,24 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 	}
 
 	r.mu.Lock()
-	if service, ok := r.services[serviceId]; !ok {
+	defer r.mu.Unlock()
+
+	service, ok := r.services[serviceId]
+	if !ok {
 		r.services[serviceId] = &serviceRecord{
 			name:      serviceId,
 			instances: map[uuid.UUID]instanceRecord{instanceId: instance},
 		}
 	} else {
+		// if the same address is already registered, we need to de-register it
+		for id, existing := range service.instances {
+			if existing.info.Address == address {
+				delete(service.instances, id)
+				slog.Warn("instance with same address exists - deleting old instance", "service.id", serviceId, "service.instance.id", id)
+			}
+		}
 		service.instances[instanceId] = instance
 	}
-	r.mu.Unlock()
 
 	slog.Info("New service instance registered", "service.id", serviceId, "service.instance", instance.info)
 	return instance.info, nil
@@ -133,6 +142,7 @@ func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Insta
 		if ok {
 			instance.info.Status = svc.Down
 			service.instances[instanceId] = instance
+			slog.Info("deregistered instance", "service.id", serviceId, "service.instance.id", instanceId)
 			return instance.info, nil
 		}
 		return svc.Instance{}, ErrInstanceNotFound
@@ -141,9 +151,16 @@ func (r *Registry) deregister(serviceId string, instanceId uuid.UUID) (svc.Insta
 }
 
 // updates the last signal from a service instance
+// if a service has de-registered (Status == svc.Down) it must re-register. A heartbeat will be rejected
 func (r *Registry) renewLease(serviceId string, instanceId uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if service, ok := r.services[serviceId]; ok {
 		if instance, ok := service.instances[instanceId]; ok {
+			if instance.info.Status == svc.Down {
+				return ErrInstanceDown
+			}
 			instance.lastSeen = time.Now()
 			service.instances[instanceId] = instance
 			return nil
@@ -183,7 +200,7 @@ func (r *Registry) monitor(ctx context.Context) {
 	ticker := time.NewTicker(REGISTRY_UPDATE_LOOP)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 		// TODO optimise leetcode style, we are doing O(services*instances) with this loop
 		select {
 		case <-ctx.Done():
