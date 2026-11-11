@@ -2,132 +2,232 @@
 
 **Design a system to help operators understand why drones are missing target detection events.**
 
-## clarifying questions
-- Are we focusing on logging in this case or are we trying to solve the issue of target detection? What is the scope of the solution once we find out the problem?
-    - lets focus on gathering the data first. We don't know why we are missing it so we can't solve it if we don't know
-    - as a deep dive we can ideate on how we can fix this
-- what is the goal of this are we trying to fix our models or are we trying to solve the problem in that instant?
-    - design two different systems one for each
-- what is the env that we are working in? Do we have stable connection so that we can stream data?
-    - lets lay down this scenario: We have an operator flying a drone, they scan the field for a target. The footage is sent back for analysis. A decision is made and communicated to the drone but it's not being actioned (event delivered and missed)? Let's say yes and we want to know why
-- do we have access to metadata or is it just the video footage? I'm trying to understand where we are building the system. On the drone or in the command center where the decision is being made.
-    - eg meteorology and location (indoor vs outdoor) distance to target
-    - also do we get information on target eg height and weight or just facial recognition
-- how is the target detection done at the moment? is it based on face or is it based on time and location and other features (clothes height weight)
-    - lets say multiple factors
-- do we have storage constraints? Can we save all the videos? lets say no constraints
-- are we working with just one model or a range of various models. (face matching and other models for other things)
-- is it possible that someone is jamming signals? (think about how we can detect that)
-- is the operator platform separate from central command where the ML models run? lets assume no
+This folder has two parts:
 
+1. **The system design.** Interview-style notes on the problem, the requirements and the target
+   architecture. They follow the interview stages in the [repo README](../README.md).
+2. **A working prototype in Go.** Mock services recreate the pipeline (drone camera → ground
+   receiver → inference → …), so the logging, metrics and tracing design can be built and tested for
+   real. It's also a hands-on way to learn Go, Kafka and OpenTelemetry.
 
-## live decisioning 
-### further questions
-- What is the acceptance rate for false positives or false negatives? explain your thought process for both scenarios where either one is prioritised. 
-- where is the issue coming from? create logging across various factors:
-    - video: 
-        - person blocking their face? 
-        - lighting insufficient? bad weather?
-        - too far or other factors blocking the view?
-    - network:
-        - is the issue from the drone connectivity?
-            - causing the video to be poor
-            - or causing delay in the decisioing 
-    - model:
-        - does the decision take too long and we miss the action window?
-    - workflow:
-        - time to action is too long and misses the window?
-        - is the process automated where the target event is sent to the drone where the drone also has its own model and has to take a decision which overrides the event?
- 
+| File | What's in it |
+|---|---|
+| `README.md` (this file) | The problem, the design, the prototype's architecture and how to run it |
+| [`docker-compose.yml`](docker-compose.yml) | Runs the prototype |
+| `src/` | One Go module: `services/` (one program each, with its own README) and `internal/` (shared packages) |
 
-let's break that down into chunks that we can tackle in one hour sprints. From the start
+---
+
+## 1. The problem
+
+### Scenario
+An operator flies a drone and scans a field for a target. The footage is sent back for analysis. A
+decision is made and sent back to the drone, but it isn't acted on: the detection event was
+delivered and then missed. We want to know **why**.
+
+### Scope
+- **Gather the data first.** We don't know why detections are missed, so we can't fix it yet.
+  Ideas for fixing it are a deep dive for later.
+- There are two goals, so there are two systems:
+  - **Live decisioning:** spot the problem as it happens.
+  - **Model improvement:** use the collected data offline to improve the models.
+
+### Clarifying questions
+- Are we focusing on logging, or on solving target detection? What's the scope once we find the problem?
+  - Gather the data first. We can't fix what we don't understand.
+- Is the goal to fix our models, or to solve the problem in the moment?
+  - Design two systems, one for each.
+- Do we have storage constraints? Can we save all the videos?
+  - No constraints on the receiver side. 
+  - Drone bandwidth is limited. 
+  - Drone security - what if it's shot down and recovered?
+- Could someone be jamming the signal?
+  - yes
+- Is the operator platform separate from central command, where the ML models run?
+  - Assume not.
+
+---
+
+## 2. Live decisioning design
+
+### Where a detection can be missed
+- **Video:** is the person blocking their face? Is the lighting poor, or the weather bad? Is the
+  target too far away, or is something blocking the view?
+- **Network:** is the drone's connection the problem, either making the video poor or delaying the
+  decision?
+- **Model:** does the decision take so long that we miss the action window?
+- **Workflow:** does acting on it take too long? Or is the process automated, and the drone's own
+  model overrides the event it receives?
+
+Also open: what are the acceptable false positive and false negative rates?
+
+### plan
+
 1. Video capture
-2. network connection
-3. inference model
-4. post processing and event delivery
-5. action workflow
+2. Video receiver
+3. Inference model
+4. Post-processing and event delivery
+5. Action workflow
 
-now I can dig deep into one of these and discuss how we would be logging these. 
+For each one: what do we log, and how?
 
-## (my thoughts)
-### functional requirements
-- build a timeline of events by aggregating logs from the various sources
-    - mock the various sources
-- realtime
-- no storage limitations within reasonable means
-    - retention policy
-- network limitations with bandwidth
-- hardware limitations for processing on client
-
-
-### non-functional requirements
-- what happens if there are disruptions? Cloud coverage slowing internet down?
-- what if they jam the signal?
-- visuals for users to be able to interact
-- what if they shoot down the drone? we dont want the data to be recoverable on the client
-- do we want others to be able to tap into the feed? 
-    - security and encryption in such case?
-- fault tolerance
-- how do we scale this to manage large amounts of data
-
-### core entities
-- camera feed
-- receiver
-- ML inference model
-- ML decision model
-- opeartor platform
-
-### interfaces
-- mock a video producer to emit 30-60 FPS and logs
-    - add a random noise to it to replicate real life feed
-- transmit that over the network
-- log metrics at the receiver: connectivity quality (packet loss, order, reconnections etc) and speed, video quality over the network
-- you want to then build a consumer for these frames as a dummy func with wait(x seconds) to simulate inference model. with logs
-- have a decision aggregator to build action events as a dummy func with wait (x sec) with logs
-- aggregate all log streams into one timeline and present
-
-## Example from yt
-### functional requirements 
+### Functional requirements
+- Build a timeline of events by aggregating logs from all the sources (mock the sources).
+- Realtime.
+- No storage limits within reason, with a retention policy.
+- Limited network bandwidth.
+- Limited hardware for processing on the drone.
 - metric ingestion
-- querying and visualisation
+- querying and visualisation 
 - alerting
-- notifications
+- notifications.
 
-### non functional requirements
-- massive scalability
-- high write availability
+### Non-functional requirements
+- Disruptions: what if cloud cover slows the link down?
+- What if the signal is jammed?
+- Visuals that users can interact with.
+- If the drone is shot down, its data must not be recoverable.
+- Can others tap into the feed? If so, security and encryption.
+- Fault tolerance.
+- Scale to large amounts of data from various sources.
+- high write availability 
 - low latency
 - query performance
-- storage efficiency
+- storage efficiency.
 
-### Data model
-- something with high write speeds - ~~Cassandra~~ I would use elasticsearch because if we want to query by any key other than the time we won't be able to on C*
-    - logs are timeseries so easy sequencing and they're immutable
-    - Good fetch by key (which will usually be time based?)
-- RDB for standard metadata - Postgres
-- Caching - Redis
-- buffers and queues - kafka
-    - presistence and spike tolerant 
+### Core entities
+- Camera feed (the drone)
+- Receiver (ground station)
+- ML inference model
+- ML decision model
+- Operator platform
 
-### API design
-- receive query and return with log data
-    - POST v1/logs/query
-- change the alerting settings
-    - POST v1/alerts
+### What to build
 
+- Mock a video producer that emits 30–60 FPS and logs, with random bytes to mimic a real feed.
+- Send it over the network.
+- At the receiver, measure connection quality (packet loss, ordering, reconnections) and speed, and
+  video quality over the network.
+- A consumer for the frames that simulates the inference model: a dummy function that waits x
+  seconds, with logs.
+- A decision aggregator that builds action events: a dummy function that waits x seconds, with logs.
+- Aggregate all log streams into one timeline and present it.
+- Services find each other through a **service registry** (built by hand, as a learning exercise).
+
+### architecture
+
+![architecture](Screenshot%20from%202026-09-18%2020-14-52.png)
+
+- Everything except the drone runs in one VPC. The drone streams video to the receiver over TCP.
+  - The drone has **no logging infrastructure**. The frame ID and send time travel in each frame's
+    header, and the receiver does all the measuring.
+- The receiver buffers the stream and sends frames to video storage and the inference model. The
+  inference model feeds the decision model, which feeds the operator platform.
+- Every stage writes logs to its own Kafka topic.
+  - Apps write JSON logs to stdout. The **OpenTelemetry Collector** reads them and ships them to Kafka,
+    one topic per service (`logs.<service>`). Apps never block on Kafka.
+  - **Kafka carries logs only.** Frames go to inference and storage over a direct, fast path.
+- A **log aggregator** consumes all the topics, produces metrics and stores a timeline in
+  Elasticsearch. A **retention job** moves old data to cold storage.
+  - **Metrics** (fps, drops, delay) go to Prometheus. **Traces** use the frame ID as the trace ID,
+    with one span per stage.
+- A **stream processor** consumes the same topics for alerting. Redis tracks which alerts were
+  already sent, and a **messaging service** notifies the operator. (Alert noise is its own problem:
+  see [noisy-alerts](../noisy-alerts/README.md).)
+
+
+### Storage and API reference
+
+**Data model:**
+- A store with high write speed. ~~Cassandra~~ Elasticsearch, because Cassandra can't query by any
+  key other than the partition key (usually time).
+  - Logs are time series, so they're easy to sequence, and they're immutable.
+  - Fetching by key works well, and the key will usually be time-based.
+- Postgres for standard metadata.
+- Redis for caching.
+- Kafka for buffers and queues: persistent and tolerant of spikes.
 
 
 ---
-coding notes:
-- I'm running the ML model on the same machine as the receiver (tightly coupled import).
 
-# TODO
-- Duplicated platform code. Both main()s contain the same LOG_LEVEL switch and logger setup. It's also unnecessary: slog.Level can already parse level names (lvl.UnmarshalText([]byte(os.Getenv("LOG_LEVEL")))), case-insensitively.
-- A protocol shared by copy and paste. Frame, HEADER_SIZE and the encode/decode logic exist in both services, joined only by the comment "must match encodeFrame in video-feed.go". A comment like that means the code belongs in one shared package.
-- Fault injection inside the business logic. sendVideoBytes does three jobs: sending frames, counting drops, and simulating a bad network. The chaos is part of the test environment, not the program.
-- Measuring and reporting are combined. streamStats.report takes a logger and logs directly. Its real job is to compute numbers. Who receives them should be decided elsewhere: a log line, a Kafka event or a metric.
-- main() and handleConnection do everything. Config, logger, listen, accept loop, reading, stats and forwarding all sit in one place, so you can't test or swap any piece on its own.
-- Minor points: the constants are SCREAMING_CASE (Go style is MixedCaps), the logger is passed as a parameter in one service but taken from slog.With in the other, and shutdown is still missing (no context.Context).
+## 3. Prototype
+
+The prototype is one Go module in `src/`. This section is the map: how the services connect and
+where to find them. Each service has a README next to its code with how it works, how to run it and
+its open work. The two contracts every service shares, the frame protocol and the logging
+conventions, are documented here.
+
+### How it fits together
+
+- **Data path.** [video-feed](src/services/video-feed/README.md) plays the drone: it makes frames and
+  sends them over TCP through a simulated bad network. [receiver](src/services/receiver/README.md) is
+  the ground station: it reads every frame, measures the link (drops, delay, fps) and forwards the
+  frame to [inference-model](src/services/mlmodels/README.md) and
+  [video-store](src/services/storage/README.md). Detections then flow on to the decision model and
+  the operator platform (section 2).
+- **Service discovery.** [svcregistry](src/services/svcregistry/README.md) is a phone book, not a
+  proxy. Services register their address and send heartbeats. The receiver looks up where to send
+  frames and then connects directly, so the registry stays off the data path.
+- **Observability.** Every service writes JSON logs to stdout and knows nothing about Kafka. The
+  OpenTelemetry Collector ships the logs to Kafka, one topic per service (`logs.<service>`). Metrics
+  go to Prometheus, and traces use the frame ID. The drone's logs are for local debugging only: a
+  real drone's stdout can't be reached from the ground, so the pipeline doesn't collect them.
+
+### Where the code is
+
+```
+src/
+├── internal/         packages the services share
+│   ├── platform/     NewLogger(): the JSON logger every service uses
+│   ├── svc/          registry types, timings and the registry client
+│   ├── video/        the frame protocol
+│   └── ...           other packages I decide to add in the future
+└── services/         one program each, with its own Dockerfile and README
+    ├── video-feed/   the drone's camera
+    ├── receiver/     the ground station
+    ├── mlmodels/     inference-model in compose
+    ├── storage/      video-store in compose
+    ├── svcregistry/  service discovery
+    └── ...           other services I decide to add in the future
+```
+
+### Frame protocol
+Every frame is a 20-byte header followed by the payload. All integers are big-endian.
+
+```
+| id     | sent_at (Unix ns) | payload length | payload   |
+| uint32 | uint64            | uint64         | ≤ 1 MiB   |
+| 4 B    | 8 B               | 8 B            |           |
+```
+
+`ReadFrame` returns `io.EOF` only when the stream ends cleanly between frames, and
+`io.ErrUnexpectedEOF` when it stops mid-frame. It rejects a length over 1 MiB before allocating, so a
+corrupt header can't exhaust memory.
+
+### Logging conventions
+- JSON lines to stdout through `log/slog`. Nothing writes to Kafka directly.
+- Attribute names follow OpenTelemetry semantic conventions: `remote.address`, `local.address`,
+  `network.transport`, `network.connections.active`.
+- `LOG_LEVEL` sets the level: `DEBUG`, `INFO`, `WARN` or `ERROR`, in any case. If it's empty, the
+  level is `INFO`. If it's invalid, the level is `INFO` and a warning is logged.
+
+### Running it
+From this folder:
+
+```bash
+docker compose up --build          # build and start every service
+docker compose logs -f receiver    # follow the receiver's logs
+docker compose down                # stop and remove the containers
+```
+
+Compose sets each service's flags. Each service's README lists its flags.
+
+---
+
+## 4. Principles
+
+### Layers
+Logging, network and env vars stay at the edges. The domain code only computes.
 
 ```
 ┌─ platform ──────────────────────────────────────────┐
@@ -140,30 +240,26 @@ coding notes:
 │  │  └─────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────┘
-
 ```
 
-```
-    src/
-        cmd/receiver/main.go       # ~15 lines: load config, build, run
-        cmd/video-feed/main.go
-        internal/platform/         # NewLogger(service), shutdown context
-        internal/frame/            # Frame, Encode, Read — the one protocol
-        internal/stats/            # Observe(frame), Snapshot() — returns data, never logs
-        internal/chaos/            # FaultyWriter wraps any io.Writer
-        internal/receiver/         # Server struct: owns the connection loop
+### Logs, metrics and traces
+Good observability needs three things: logs for humans, metrics, and traces. Metrics aren't printed
+as log lines; they're stored as typed metrics:
 
-```
+| Type | Behaves like | Our stats |
+|---|---|---|
+| Counter | Only goes up, never resets | `frames_received_total`, `frames_dropped_total` |
+| Gauge | Goes up and down | `connections_active` |
+| Histogram | Counts values into buckets (≤16 ms, ≤100 ms, ≤1 s, ≤5 s…) | `frame_delay_seconds`: gives p50/p99, not just avg/max |
 
-- You need three things for good logging: logs for humans, metrics, trace. atm the metrics are just being printed out as logs. How production does it: 
-
-Type	Behaves like	Your stats
-Counter	Only goes up, never resets	frames_received_total, frames_dropped_total
-Gauge	Goes up and down	connections_active
-Histogram	Counts values into buckets (≤16 ms, ≤100 ms, ≤1 s, ≤5 s…)	frame_delay_seconds, which replaces avg/max and gives p50/p99
-Notice that fps isn't stored at all. The query works it out from the counter: rate(frames_received_total[1m]), meaning "how fast did this counter grow over the last minute". Because the stored data is raw totals, any time window and any statistic can be calculated afterwards.
+fps isn't stored at all. The query works it out from the counter: `rate(frames_received_total[1m])`
+means "how fast did this counter grow over the last minute". Because the raw totals are stored, any
+time window and any statistic can be calculated afterwards.
 
 There are two ways to get the numbers out of the app:
-
-Pull (Prometheus, the most common): the app serves an HTTP endpoint, /metrics, showing the current totals. Prometheus visits it every ~15 s ("scrapes" it) and stores the values. Grafana draws the charts. If the stream stalls, the counter stops growing and fps drops to 0. That's visible and you can alert on it, which fixes the "only reports when a frame arrives" problem.
-Push (OpenTelemetry SDK): the app sends metrics to a collector, which forwards them to Prometheus or another backend. It's vendor-neutral, with somewhat more setup.
+- **Pull (Prometheus, the most common):** the app serves the current totals at an HTTP endpoint,
+  `/metrics`. Prometheus visits it about every 15 s ("scrapes" it) and stores the values, and Grafana
+  draws the charts. If the stream stalls, the counter stops growing and fps drops to 0. That's
+  visible and you can alert on it, unlike a log line that's only written when a frame arrives.
+- **Push (OpenTelemetry SDK):** the app sends metrics to a collector, which forwards them to
+  Prometheus or another backend. It's vendor-neutral, with a bit more setup.
