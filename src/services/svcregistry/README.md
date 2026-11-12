@@ -81,3 +81,11 @@ go test -tags perf -run 'Memory|Stall' -bench . -benchmem -v ./services/svcregis
 - [ ] Later: cleanup is O(services × instances) per tick, so optimise it; gRPC; push deregistrations
   to the services that depend on the one that left (service lineage); a CLI that creates and
   registers test services.
+
+How graceful shutdown should work:
+1. Move the body of main into func run() error. Then main only needs if err := run(); err != nil { slog.Error(...); os.Exit(1) }. os.Exit skips deferred calls, so keep all your defers inside run.
+2. Use signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM). docker stop sends SIGTERM. Your context.Cause(ctx) log in monitor will then name the signal for free (I checked the docs).
+3. Run srv.ListenAndServe() in a goroutine and send its error on a channel with a buffer of 1.
+4. select on ctx.Done() and on that error channel.
+5. Call srv.Shutdown(...) with a new context.WithTimeout(context.Background(), 5*time.Second).
+6. wg.Wait() for the monitor.

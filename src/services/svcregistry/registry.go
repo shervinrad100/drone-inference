@@ -4,7 +4,6 @@ import (
 	"context"
 	"drone-target-detection/src/internal/svc"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"sync"
@@ -20,6 +19,7 @@ var (
 	ErrServiceNotFound  = errors.New("service not found")
 	ErrInstanceNotFound = errors.New("instance not found")
 	ErrInstanceDown     = errors.New("instance is down")
+	ErrInvalidAddress   = errors.New("badd address input")
 )
 
 type instanceRecord struct {
@@ -64,8 +64,10 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 	// TODO accept description what if name matches but description doesn't?
 
 	if _, _, err := net.SplitHostPort(address); err != nil {
-		return svc.Instance{}, fmt.Errorf("bad address input: %w", err)
+		return svc.Instance{}, ErrInvalidAddress
 	}
+	// TODO what if its empty
+	// TODO what if the address is the DNS or something malicious? We need checks for that too
 
 	instanceId := uuid.New()
 	instance := instanceRecord{
