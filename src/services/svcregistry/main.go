@@ -74,16 +74,18 @@ func (s *server) registerInstance(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+
 	// execute logic
 	instance, err := s.registry.register(serviceId, regInstanceReq.Address)
 	if err != nil {
-		if err == ErrInvalidAddress {
-			http.Error(w, "", http.StatusBadRequest)
+		if errors.Is(err, ErrInvalidAddress) || errors.Is(err, ErrInvalidServiceName) {
+			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
 	// respond
 	w.Header().Set("Location", fmt.Sprintf("/services/%s/instances/%s", serviceId, instance.ID))
 	writeJson(w, http.StatusCreated, instance)

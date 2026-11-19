@@ -53,7 +53,44 @@ func TestRegisterServiceHandler(t *testing.T) {
 }
 
 func TestRegisterServiceHandlerWithBadRequest(t *testing.T) {
-	// TODO what if field names are wrong
-	// TODO what if values are malformed
-	// TODO what if there are missing fields?
+	tests := []struct {
+		name      string
+		serviceId string
+		request   any
+		wantErr   bool
+	}{
+		{"bad field name", "video-receiver", struct{ foo string }{foo: "0.0.0.1:8080"}, true},
+		{"bad json value", "video-receiver", struct{ Address int }{Address: 123}, true},
+		{"missing fields", "video-receiver", struct{}{}, true},
+	}
+
+	// set up server
+	s := &server{registry: newRegistry()}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBytes, _ := json.Marshal(tt.request)
+			req := httptest.NewRequest(
+				http.MethodPost,
+				fmt.Sprintf("/services/%s/instances", tt.serviceId),
+				bytes.NewReader(jsonBytes),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			s.routes().ServeHTTP(w, req)
+
+			// check status code
+			expectedCode := http.StatusBadRequest
+			if tt.wantErr {
+				if w.Code != expectedCode {
+					t.Errorf("bad response code, expected: %v but got %v\nbody: %s\n",
+						expectedCode, w.Code, w.Body.String())
+				}
+				return
+			}
+
+		})
+	}
+
 }
