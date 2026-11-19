@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -168,6 +169,57 @@ func TestRegisterAddressValidation(t *testing.T) {
 			// a rejected address must not leave a service behind
 			if _, ok := r.lookup("video-receiver"); ok == tt.wantErr {
 				t.Errorf("service registered = %v after error = %v", ok, err)
+			}
+		})
+	}
+}
+
+// names become map keys, URL path segments, compose hostnames and Kafka topics (logs.<service>),
+// so only DNS labels are accepted: lowercase letters, digits and '-', at most 63 characters
+func TestRegisterServiceNameValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		serviceId string
+		wantErr   bool
+	}{
+		{"lowercase", "receiver", false},
+		{"hyphenated", "video-feed", false},
+		{"digits", "ml2", false},
+		{"single character", "a", false},
+		{"63 characters", strings.Repeat("a", 63), false},
+		{"empty", "", true},
+		{"64 characters", strings.Repeat("a", 64), true},
+		{"uppercase", "Receiver", true},
+		{"leading hyphen", "-feed", true},
+		{"trailing hyphen", "feed-", true},
+		{"underscore", "video_feed", true},
+		{"dot", "video.feed", true},
+		{"slash", "a/b", true},
+		{"path traversal", "../../x", true},
+		{"space", " ", true},
+		{"trailing newline", "receiver\n", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRegistry()
+
+			_, err := r.register(tt.serviceId, "10.0.0.1:8080")
+
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidServiceName) {
+					t.Fatalf("register(%q) error = %v, want %v", tt.serviceId, err, ErrInvalidServiceName)
+				}
+				// rejected, not fixed up: no service under this name or a cleaned version of it
+				if got := r.list(); len(got) != 0 {
+					t.Errorf("registry = %v after rejecting %q, want it empty", got, tt.serviceId)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("register(%q) failed: %v", tt.serviceId, err)
+			}
+			if _, ok := r.lookup(tt.serviceId); !ok {
+				t.Errorf("service %q not registered", tt.serviceId)
 			}
 		})
 	}

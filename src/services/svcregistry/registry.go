@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"regexp"
 	"sync"
 	"time"
 	"uuid"
@@ -16,11 +17,18 @@ const (
 )
 
 var (
-	ErrServiceNotFound  = errors.New("service not found")
-	ErrInstanceNotFound = errors.New("instance not found")
-	ErrInstanceDown     = errors.New("instance is down")
-	ErrInvalidAddress   = errors.New("badd address input")
+	ErrServiceNotFound    = errors.New("service not found")
+	ErrInstanceNotFound   = errors.New("instance not found")
+	ErrInstanceDown       = errors.New("instance is down")
+	ErrInvalidAddress     = errors.New("bad address input")
+	ErrInvalidServiceName = errors.New("invalid service name")
 )
+
+var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+func validServiceName(name string) bool {
+	return len(name) <= 63 && serviceNameRe.MatchString(name)
+}
 
 type instanceRecord struct {
 	info      svc.Instance
@@ -66,8 +74,10 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 	if _, _, err := net.SplitHostPort(address); err != nil {
 		return svc.Instance{}, ErrInvalidAddress
 	}
-	// TODO what if its empty
-	// TODO what if the address is the DNS or something malicious? We need checks for that too
+
+	if !validServiceName(serviceId) {
+		return svc.Instance{}, ErrInvalidServiceName
+	}
 
 	instanceId := uuid.New()
 	instance := instanceRecord{
