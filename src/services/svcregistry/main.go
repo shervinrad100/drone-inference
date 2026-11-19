@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"drone-target-detection/src/internal/platform"
-	"drone-target-detection/src/internal/svc"
+	"drone-inference/src/internal/platform"
+	"drone-inference/src/internal/svc"
 	"encoding/json/v2"
 	"errors"
 	"fmt"

@@ -1,3 +1,3 @@
-module drone-target-detection/src
+module drone-inference/src
 
 go 1.27.1

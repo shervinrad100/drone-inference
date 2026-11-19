@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"drone-target-detection/src/internal/svc"
+	"drone-inference/src/internal/svc"
 	"errors"
 	"fmt"
 	"slices"

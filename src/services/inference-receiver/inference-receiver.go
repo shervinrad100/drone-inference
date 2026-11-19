@@ -1,9 +1,9 @@
 package main
 
 import (
-	"drone-target-detection/src/internal/platform"
-	"drone-target-detection/src/internal/svc"
-	"drone-target-detection/src/internal/video"
+	"drone-inference/src/internal/platform"
+	"drone-inference/src/internal/svc"
+	"drone-inference/src/internal/video"
 	"errors"
 	"flag"
 	"fmt"
