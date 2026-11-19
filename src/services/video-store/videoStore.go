@@ -2,8 +2,10 @@ package main
 
 import (
 	"drone-target-detection/src/internal/platform"
+	"drone-target-detection/src/internal/svc"
 	"fmt"
 	"log/slog"
+	"os"
 )
 
 type StorageDestination struct{}
@@ -19,5 +21,13 @@ func main() {
 	// TODO start server and accept TCP connections
 	// read stream
 	logger := platform.NewLogger()
+
+	serviceName, err := svc.ServiceName()
+	if err != nil {
+		logger.Error("this service needs a name", "err", err)
+		os.Exit(1)
+	}
+
+	logger = logger.With("service.name", serviceName)
 	slog.SetDefault(logger)
 }

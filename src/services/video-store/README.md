@@ -25,5 +25,4 @@ All of it is in `videoStore.go`.
   them.
 - [ ] Assemble the frames into a video and save it to a file.
 - [ ] `Write` uses `fmt.Printf` for every frame, ignoring `LOG_LEVEL`. Use the logger.
-- [ ] Pass the service name to `platform.NewLogger`, so every log line says which service wrote it
   (`service.name`). The collector routes logs to `logs.<service>` by it.

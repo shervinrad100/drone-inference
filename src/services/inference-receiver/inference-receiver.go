@@ -2,6 +2,7 @@ package main
 
 import (
 	"drone-target-detection/src/internal/platform"
+	"drone-target-detection/src/internal/svc"
 	"drone-target-detection/src/internal/video"
 	"errors"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 )
 
 const (
@@ -24,6 +26,14 @@ func (inferenceModel *MachineLearningModel) Write(p []byte) (n int, err error) {
 func main() {
 
 	logger := platform.NewLogger()
+
+	serviceName, err := svc.ServiceName()
+	if err != nil {
+		logger.Error("this service needs a name", "err", err)
+		os.Exit(1)
+	}
+
+	logger = logger.With("service.name", serviceName)
 	slog.SetDefault(logger)
 
 	// receive streams

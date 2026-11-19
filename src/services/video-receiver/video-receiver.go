@@ -2,9 +2,11 @@ package main
 
 import (
 	"drone-target-detection/src/internal/platform"
+	"drone-target-detection/src/internal/svc"
 	"drone-target-detection/src/internal/video"
 	"flag"
 	"log/slog"
+	"os"
 
 	"errors"
 	"fmt"
@@ -12,8 +14,6 @@ import (
 	"net"
 	"time"
 )
-
-// TODO add logging
 
 const (
 	MAX_CONNECTIONS = 1
@@ -23,7 +23,16 @@ const (
 )
 
 func main() {
+
 	logger := platform.NewLogger()
+
+	serviceName, err := svc.ServiceName()
+	if err != nil {
+		logger.Error("this service needs a name", "err", err)
+		os.Exit(1)
+	}
+
+	logger = logger.With("service.name", serviceName)
 	slog.SetDefault(logger)
 
 	// Start new TCP server

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"regexp"
 	"sync"
 	"time"
 	"uuid"
@@ -23,12 +22,6 @@ var (
 	ErrInvalidAddress     = errors.New("bad address input")
 	ErrInvalidServiceName = errors.New("invalid service name")
 )
-
-var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-
-func validServiceName(name string) bool {
-	return len(name) <= 63 && serviceNameRe.MatchString(name)
-}
 
 type instanceRecord struct {
 	info      svc.Instance
@@ -75,7 +68,7 @@ func (r *Registry) register(serviceId string, address string) (svc.Instance, err
 		return svc.Instance{}, ErrInvalidAddress
 	}
 
-	if !validServiceName(serviceId) {
+	if !svc.ValidServiceName(serviceId) {
 		return svc.Instance{}, ErrInvalidServiceName
 	}
 

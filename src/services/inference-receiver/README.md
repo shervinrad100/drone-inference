@@ -36,6 +36,5 @@ connection, and `MachineLearningModel` stands in for the model.
 - [ ] Produce a detection result for the decision model.
 - [ ] `-port` defaults to `8080`, but the receiver has no default. Make the two consistent.
 - [ ] Graceful shutdown: stop the accept loop with a `context.Context` from `signal.NotifyContext`.
-- [ ] Pass the service name to `platform.NewLogger`, so every log line says which service wrote it
   (`service.name`). The collector routes logs to `logs.<service>` by it.
 - [ ] Constants are `SCREAMING_CASE`, and Go uses `MixedCaps`.

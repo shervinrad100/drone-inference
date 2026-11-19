@@ -63,7 +63,6 @@ connection, and `streamStats` does the measuring.
   forward. Split them so each piece can be tested or swapped, e.g. a `Server` struct that owns the
   connection loop.
 - [ ] Graceful shutdown: stop the accept loop with a `context.Context` from `signal.NotifyContext`.
-- [ ] Pass the service name to `platform.NewLogger`, so every log line says which service wrote it
   (`service.name`). The collector routes logs to `logs.<service>` by it.
 - [ ] Loggers are used two ways: `streamStats.report` takes one as an argument, and
   `handleVideoFeed` builds one from the global `slog`. Pick one.

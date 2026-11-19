@@ -1,6 +1,9 @@
 package svc
 
 import (
+	"fmt"
+	"os"
+	"regexp"
 	"time"
 	"uuid"
 )
@@ -69,6 +72,19 @@ type RegisterInstanceRequest struct {
 	Address string `json:"address"`
 }
 
-type ErrorResponse struct {
-	Error string `json:"error"`
+var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+func ValidServiceName(name string) bool {
+	return len(name) <= 63 && serviceNameRe.MatchString(name)
+}
+
+func ServiceName() (string, error) {
+	serviceName := os.Getenv("OTEL_SERVICE_NAME")
+	if serviceName == "" {
+		return "", fmt.Errorf("service name could not be parsed")
+	}
+	if !ValidServiceName(serviceName) {
+		return "", fmt.Errorf("invalid service name: %s", serviceName)
+	}
+	return serviceName, nil
 }

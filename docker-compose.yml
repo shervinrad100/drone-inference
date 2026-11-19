@@ -2,33 +2,36 @@ services:
   video-store:
     build:
       context: ./src
-      dockerfile: ./services/storage/Dockerfile
+      dockerfile: ./services/video-store/Dockerfile
     ports:
       - "8081:8081"
     environment:
       - LOG_LEVEL=WARN
+      - OTEL_SERVICE_NAME=video-store
     
-  inference-model:
+  inference-receiver:
     build:
       context: ./src
-      dockerfile: ./services/mlmodels/Dockerfile
+      dockerfile: ./services/inference-receiver/Dockerfile
     ports:
       - "8082:8082"
     environment:
       - LOG_LEVEL=WARN
+      - OTEL_SERVICE_NAME=inference-receiver
     command: ["-port", "8082"]
     
-  receiver:
+  video-receiver:
     build: 
       context: ./src
-      dockerfile: ./services/receiver/Dockerfile
+      dockerfile: ./services/video-receiver/Dockerfile
     depends_on:
       - video-store
-      - inference-model
+      - inference-receiver
     ports:
       - "8080:8080"
     environment:
       - LOG_LEVEL=DEBUG
+      - OTEL_SERVICE_NAME=video-receiver
     command: ["-port", "8080"]
   
   video-feed:
@@ -36,7 +39,7 @@ services:
       context: ./src
       dockerfile: ./services/video-feed/Dockerfile
     depends_on:
-      - receiver
+      - video-receiver
     environment:
       - LOG_LEVEL=DEBUG
-    command: ["-ip", "receiver", "-port", "8080"]
+    command: ["-ip", "video-receiver", "-port", "8080"]
