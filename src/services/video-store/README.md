@@ -1,7 +1,7 @@
 # video-store
 
-Folder `storage`, compose service `video-store`. The raw video archive in the design: it keeps the
-footage for reviewing missed detections and, later, for the offline model-improvement system.
+The raw video archive in the design: it keeps the footage for reviewing missed detections and,
+later, for the offline model-improvement system.
 
 ## What it does today
 
@@ -12,7 +12,9 @@ footage for reviewing missed detections and, later, for the offline model-improv
 
 ## Running it
 
-No flags yet. `LOG_LEVEL` sets the log level (compose: `WARN`).
+No flags yet. `LOG_LEVEL` sets the log level (compose: `WARN`). `OTEL_SERVICE_NAME` sets
+`service.name` on its log lines (compose: `video-store`). It's required: without a valid name the
+service exits at startup.
 
 ## Code
 
@@ -25,4 +27,3 @@ All of it is in `videoStore.go`.
   them.
 - [ ] Assemble the frames into a video and save it to a file.
 - [ ] `Write` uses `fmt.Printf` for every frame, ignoring `LOG_LEVEL`. Use the logger.
-  (`service.name`). The collector routes logs to `logs.<service>` by it.

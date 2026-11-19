@@ -1,7 +1,7 @@
 # video-feed
 
 The drone's camera: stage 1 (video capture) in the design. It makes frames and sends them over TCP
-to the [receiver](../receiver/README.md), through a simulated bad network.
+to [video-receiver](../video-receiver/README.md), through a simulated bad network.
 
 In the design the drone has no logging infrastructure. The frame ID and send time travel in each
 frame's header, and the receiver does all the measuring. This service still logs to stdout for local
@@ -23,10 +23,12 @@ the ground.
 
 | Flag | What it sets | Default | In compose |
 |---|---|---|---|
-| `-ip` | The receiver's host | none | `receiver` |
+| `-ip` | The receiver's host | none | `video-receiver` |
 | `-port` | The receiver's port | none | `8080` |
 
-`LOG_LEVEL` sets the log level (compose: `DEBUG`).
+`LOG_LEVEL` sets the log level (compose: `DEBUG`). Unlike the other services it doesn't read
+`OTEL_SERVICE_NAME`, on purpose: it runs on the drone, whose logs aren't collected, so its lines have
+no `service.name`.
 
 It connects once at startup. If the receiver isn't listening yet, or the connection drops, it exits.
 Restart it with `docker compose restart video-feed`.
@@ -51,8 +53,6 @@ All of it is in `video-feed.go`: `main` dials the receiver, `cameraCapture` make
 - [ ] Put the drone video capture on another Docker network.
 - [ ] Make it UDP.
 - [ ] Graceful shutdown: stop the camera loop with a `context.Context` from `signal.NotifyContext`.
-- [ ] Pass the service name to `platform.NewLogger`, so every log line says which service wrote it
-  (`service.name`).
 - [ ] Loggers are used two ways: `main` uses its own `logger`, and `cameraCapture` uses the global
   `slog`. Pick one.
 - [ ] Leftovers: the `HEADER_SIZE` constant duplicates `internal/video`; `FRAME_BUFFER_SIZE` is the

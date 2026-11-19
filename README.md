@@ -160,11 +160,12 @@ conventions, are documented here.
 ### How it fits together
 
 - **Data path.** [video-feed](src/services/video-feed/README.md) plays the drone: it makes frames and
-  sends them over TCP through a simulated bad network. [receiver](src/services/receiver/README.md) is
-  the ground station: it reads every frame, measures the link (drops, delay, fps) and forwards the
-  frame to [inference-model](src/services/mlmodels/README.md) and
-  [video-store](src/services/storage/README.md). Detections then flow on to the decision model and
-  the operator platform (section 2).
+  sends them over TCP through a simulated bad network.
+  [video-receiver](src/services/video-receiver/README.md) is the ground station: it reads every
+  frame, measures the link (drops, delay, fps) and forwards the frame to
+  [inference-receiver](src/services/inference-receiver/README.md) and
+  [video-store](src/services/video-store/README.md). Detections then flow on to the decision model
+  and the operator platform (section 2).
 - **Service discovery.** [svcregistry](src/services/svcregistry/README.md) is a phone book, not a
   proxy. Services register their address and send heartbeats. The receiver looks up where to send
   frames and then connects directly, so the registry stays off the data path.
@@ -177,18 +178,18 @@ conventions, are documented here.
 
 ```
 src/
-├── internal/         packages the services share
-│   ├── platform/     NewLogger(): the JSON logger every service uses
-│   ├── svc/          registry types, timings and the registry client
-│   ├── video/        the frame protocol
-│   └── ...           other packages I decide to add in the future
-└── services/         one program each, with its own Dockerfile and README
-    ├── video-feed/   the drone's camera
-    ├── receiver/     the ground station
-    ├── mlmodels/     inference-model in compose
-    ├── storage/      video-store in compose
-    ├── svcregistry/  service discovery
-    └── ...           other services I decide to add in the future
+├── internal/                packages the services share
+│   ├── platform/            NewLogger(): the JSON logger every service uses
+│   ├── svc/                 registry types and client, timings, and the service-name check
+│   ├── video/               the frame protocol
+│   └── ...                  other packages I decide to add in the future
+└── services/                one program each, with its own Dockerfile and README
+    ├── video-feed/          the drone's camera
+    ├── video-receiver/      the ground station
+    ├── inference-receiver/  runs the ML model on each frame
+    ├── video-store/         the raw video archive
+    ├── svcregistry/         service discovery
+    └── ...                  other services I decide to add in the future
 ```
 
 ### Frame protocol
@@ -208,6 +209,10 @@ corrupt header can't exhaust memory.
 - JSON lines to stdout through `log/slog`. Nothing writes to Kafka directly.
 - Attribute names follow OpenTelemetry semantic conventions: `remote.address`, `local.address`,
   `network.transport`, `network.connections.active`.
+- Every line carries `service.name`, which the Collector uses to pick the `logs.<service>` topic. A
+  service reads it from `OTEL_SERVICE_NAME` at startup and exits if it's missing or isn't a valid
+  name: lowercase letters, digits and `-`, at most 63 characters. The registry accepts the same
+  names. video-feed doesn't read one, because the drone's logs aren't collected.
 - `LOG_LEVEL` sets the level: `DEBUG`, `INFO`, `WARN` or `ERROR`, in any case. If it's empty, the
   level is `INFO`. If it's invalid, the level is `INFO` and a warning is logged.
 
@@ -215,12 +220,12 @@ corrupt header can't exhaust memory.
 From this folder:
 
 ```bash
-docker compose up --build          # build and start every service
-docker compose logs -f receiver    # follow the receiver's logs
-docker compose down                # stop and remove the containers
+docker compose up --build              # build and start every service
+docker compose logs -f video-receiver  # follow the ground station's logs
+docker compose down                    # stop and remove the containers
 ```
 
-Compose sets each service's flags. Each service's README lists its flags.
+Compose sets each service's flags and `OTEL_SERVICE_NAME`. Each service's README lists its flags.
 
 ---
 

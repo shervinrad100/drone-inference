@@ -15,9 +15,11 @@ directly, so the registry stays off the data path.
 
 ## How the registry works
 
-- `register` checks the address is `host:port` and gives the instance a new UUID. If an instance of
-  that service is already at the same address, it's replaced: an address only registers again after
-  a restart, so the old entry is stale.
+- `register` checks the address is `host:port` and the name passes `svc.ValidServiceName`
+  (lowercase letters, digits and `-`, at most 63 characters, the same rule every service checks its
+  own name against), then gives the instance a new UUID. If an instance of that service is already
+  at the same address, it's replaced: an address only registers again after a restart, so the old
+  entry is stale.
 - `lookup` and `list` return snapshots: copies the caller can't use to change the registry.
 - `renewLease` is the heartbeat. It updates `lastSeen`, and rejects an instance marked `down`, which
   must register again.
@@ -74,8 +76,8 @@ go test -tags perf -run 'Memory|Stall' -bench . -benchmem -v ./services/svcregis
 - [ ] `renewLease`: does it need to return the instance, or just an error?
 - [ ] Graceful shutdown: `main` waits on `ctx.Done()`, but nothing cancels it, and
   `http.ListenAndServe` blocks before it's reached. Use `signal.NotifyContext`.
-- [ ] Pass the service name to `platform.NewLogger`, so every log line says which service wrote it
-  (`service.name`). The collector routes logs to `logs.<service>` by it.
+- [ ] Read the service name with `svc.ServiceName()` and add it to the logger as `service.name`, as
+  the other services do. The collector routes logs to `logs.<service>` by it.
 - [ ] Constants are `SCREAMING_CASE` (`REGISTRY_UPDATE_LOOP` here, `HEARTBEAT_INTERVAL` and `TTL` in
   `internal/svc`), and Go uses `MixedCaps`.
 - [ ] Later: cleanup is O(services × instances) per tick, so optimise it; gRPC; push deregistrations

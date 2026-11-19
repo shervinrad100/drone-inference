@@ -1,4 +1,4 @@
-# receiver
+# video-receiver
 
 The ground station
 It accepts the drone's stream, measures the health of the link, and will forward every frame to inference and storage.
@@ -11,7 +11,7 @@ It accepts the drone's stream, measures the health of the link, and will forward
   [frame protocol](../../../README.md#frame-protocol)). It closes the connection when the stream ends
   or a frame can't be read.
 - Measures each frame (below).
-- **Forwarding isn't wired yet.** The `io.MultiWriter` to inference-model and video-store is
+- **Forwarding isn't wired yet.** The `io.MultiWriter` to inference-receiver and video-store is
   commented out. Their addresses will come from [svcregistry](../svcregistry/README.md).
 
 ## What it measures
@@ -37,7 +37,8 @@ Limits:
 |---|---|---|---|
 | `-port` | The port to listen on | none: without it the OS picks a random free port | `8080` |
 
-`LOG_LEVEL` sets the log level (compose: `DEBUG`).
+`LOG_LEVEL` sets the log level (compose: `DEBUG`). `OTEL_SERVICE_NAME` sets `service.name` on its log
+lines (compose: `video-receiver`). It's required: without a valid name the service exits at startup.
 
 ## Code
 
@@ -46,8 +47,8 @@ connection, and `streamStats` does the measuring.
 
 ## Open work
 
-- [ ] Forward frames to inference-model and video-store, looking up their addresses in the registry.
-  On an error, look up again and retry another instance.
+- [ ] Forward frames to inference-receiver and video-store, looking up their addresses in the
+  registry. On an error, look up again and retry another instance.
 - [ ] Forward the whole encoded frame (`video.EncodeFrame(frame)`), not `frame.Payload`. Downstream
   services read with `video.ReadFrame`, which expects the header, and the frame ID is needed later as
   the trace ID.
@@ -63,7 +64,6 @@ connection, and `streamStats` does the measuring.
   forward. Split them so each piece can be tested or swapped, e.g. a `Server` struct that owns the
   connection loop.
 - [ ] Graceful shutdown: stop the accept loop with a `context.Context` from `signal.NotifyContext`.
-  (`service.name`). The collector routes logs to `logs.<service>` by it.
 - [ ] Loggers are used two ways: `streamStats.report` takes one as an argument, and
   `handleVideoFeed` builds one from the global `slog`. Pick one.
 - [ ] Constants are `SCREAMING_CASE`, and Go uses `MixedCaps`.
