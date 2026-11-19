@@ -1,0 +1,9 @@
+# test binaries, e.g. from `go test -c` (see registry_performance_test.go)
+*.test
+
+# coverage and profiles
+*.out
+*.prof
+
+# local env files
+.env

@@ -5,7 +5,8 @@
 This folder has two parts:
 
 1. **The system design.** Interview-style notes on the problem, the requirements and the target
-   architecture. They follow the interview stages in the [repo README](../README.md).
+   architecture. They follow the interview stages in
+   [design-interviews](https://github.com/shervinrad100/design-interviews#readme).
 2. **A working prototype in Go.** Mock services recreate the pipeline (drone camera → ground
    receiver → inference → …), so the logging, metrics and tracing design can be built and tested for
    real. It's also a hands-on way to learn Go, Kafka and OpenTelemetry.
@@ -133,7 +134,7 @@ For each one: what do we log, and how?
     with one span per stage.
 - A **stream processor** consumes the same topics for alerting. Redis tracks which alerts were
   already sent, and a **messaging service** notifies the operator. (Alert noise is its own problem:
-  see [noisy-alerts](../noisy-alerts/README.md).)
+  see [noisy-alerts](https://github.com/shervinrad100/design-interviews/tree/main/noisy-alerts).)
 
 
 ### Storage and API reference
