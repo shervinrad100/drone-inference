@@ -29,8 +29,8 @@ connection, and `MachineLearningModel` stands in for the model.
 - [ ] **Bug: it spins on read errors.** `handleVideoFeed` returns only on `io.EOF`. Any other error,
   such as `io.ErrUnexpectedEOF` when the sender dies mid-frame, a connection reset, or an oversized
   length, is logged and the loop carries on. It retries the broken connection forever at full CPU,
-  writes empty frames to the model, and never frees its connection slot. Commit `b717fb6` fixed
-  this, and `27309f3` moved the `return` into the `io.EOF` branch.
+  writes empty frames to the model, and never frees its connection slot. Commit `0d5f25e` fixed
+  this, and `0163ea1` moved the `return` into the `io.EOF` branch.
 - [ ] Simulate inference: `Write` does nothing. Add a configurable delay (the "wait x seconds" in
   [what to build](../../../README.md#what-to-build)) and log the start and end of inference with the
   frame ID.
